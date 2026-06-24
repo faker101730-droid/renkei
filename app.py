@@ -94,9 +94,13 @@ def safe_secret(key: str, default: str) -> str:
 
 
 def normalize_text(value: object) -> str:
+    """列名・シート名の表記ゆれを吸収する。"""
     text = str(value).strip()
     text = text.replace(" ", "").replace("　", "")
-    text = text.replace("_", "").replace("-", "")
+    text = text.replace("_", "").replace("-", "").replace("／", "/")
+    text = text.replace("（", "(").replace("）", ")")
+    # Excel側で「稼働」ではなく「稼動」になっても拾えるように統一
+    text = text.replace("稼動", "稼働")
     return text.lower()
 
 
@@ -119,6 +123,86 @@ def find_column(columns: Iterable[object], keywords: list[str], required_name: s
         f"必須列「{required_name}」が見つかりません。Excelの列名を確認してください。"
     )
 
+
+
+def header_match_score(columns: Iterable[object]) -> int:
+    """RENKEI様式らしいヘッダーかをざっくり判定する。"""
+    norms = [normalize_text(c) for c in columns if str(c).strip() and str(c).lower() != "nan"]
+    if not norms:
+        return 0
+
+    def has_any(keys: list[str]) -> bool:
+        key_norms = [normalize_text(k) for k in keys]
+        return any(any(k in n for k in key_norms) for n in norms)
+
+    flags = [
+        has_any(["年度", "年"]),
+        has_any(["月番号", "月番"]),
+        has_any(["月"]),
+        has_any(["稼働日数", "稼働", "稼動日数", "稼動", "営業日数", "診療日数"]),
+        has_any(["予約件数", "予約数", "予約", "件数"]),
+    ]
+    return int(sum(flags))
+
+
+def read_excel_smart(excel_source) -> pd.DataFrame:
+    """
+    Excelの先頭シート固定で落ちないように、
+    1) latest/データ系シートを優先
+    2) RENKEI様式のヘッダーを持つシートを探索
+    3) ヘッダー行が1行目でない場合も先頭15行から探索
+    して読み込む。
+    """
+    xls = pd.ExcelFile(excel_source, engine="openpyxl")
+    sheet_names = list(xls.sheet_names)
+
+    def sheet_priority(sheet: str) -> tuple[int, str]:
+        norm = normalize_text(sheet)
+        preferred = ["latest", "data", "データ", "元データ", "入力", "実績"]
+        if any(k in norm for k in preferred):
+            return (0, sheet)
+        if "ルール" in norm or "記入例" in norm or "説明" in norm:
+            return (2, sheet)
+        return (1, sheet)
+
+    candidates: list[tuple[int, str, object, pd.DataFrame]] = []
+
+    for sheet in sorted(sheet_names, key=sheet_priority):
+        # 通常の1行目ヘッダー
+        try:
+            df0 = pd.read_excel(excel_source, sheet_name=sheet, engine="openpyxl")
+            score0 = header_match_score(df0.columns)
+            if score0 >= 4:
+                df0.attrs["source_sheet_name"] = sheet
+                df0.attrs["source_header_row"] = 1
+                return df0
+            candidates.append((score0, sheet, 1, df0))
+        except Exception:
+            pass
+
+        # ヘッダー行が2行目以降にある場合
+        try:
+            preview = pd.read_excel(excel_source, sheet_name=sheet, header=None, nrows=15, engine="openpyxl")
+            for idx, row in preview.iterrows():
+                values = [v for v in row.tolist() if pd.notna(v)]
+                score = header_match_score(values)
+                if score >= 4:
+                    dfh = pd.read_excel(excel_source, sheet_name=sheet, header=int(idx), engine="openpyxl")
+                    dfh.attrs["source_sheet_name"] = sheet
+                    dfh.attrs["source_header_row"] = int(idx) + 1
+                    return dfh
+        except Exception:
+            pass
+
+    # 最後の保険：一番スコアが高かった読み込み結果を返す
+    if candidates:
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best = candidates[0][3]
+        best.attrs["source_sheet_name"] = candidates[0][1]
+        best.attrs["source_header_row"] = candidates[0][2]
+        return best
+
+    raise ValueError("Excel内に読み込めるシートがありません。")
 
 def fiscal_year_sort_key(year: object) -> int:
     """R6, R7 のような年度表記を自然順にする。"""
@@ -192,37 +276,63 @@ def load_from_github(owner: str, repo: str, branch: str, file_path: str) -> pd.D
     raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_path}"
     response = requests.get(raw_url, timeout=20)
     response.raise_for_status()
-    return pd.read_excel(io.BytesIO(response.content), sheet_name=0, engine="openpyxl")
+    return read_excel_smart(io.BytesIO(response.content))
 
 
 def load_from_upload(uploaded_file) -> pd.DataFrame:
-    return pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
+    return read_excel_smart(uploaded_file)
 
 
 def standardize_renkei_data(raw_df: pd.DataFrame) -> pd.DataFrame:
     if raw_df is None or raw_df.empty:
         raise ValueError("Excelにデータがありません。")
 
+    source_sheet_name = raw_df.attrs.get("source_sheet_name", "不明")
+    source_header_row = raw_df.attrs.get("source_header_row", "不明")
+
     # 空行・空列を整理
     df = raw_df.copy()
     df = df.dropna(how="all").dropna(axis=1, how="all")
     df.columns = [str(c).strip() for c in df.columns]
 
-    year_col = find_column(df.columns, ["年度"], "年度")
-    month_col = find_column(df.columns, ["月ツキ", "月"], "月")
-    month_no_col = find_column(df.columns, ["月番号", "月番"], "月番号")
-    working_days_col = find_column(df.columns, ["稼働日数", "稼働"], "稼働日数")
-    reservation_col = find_column(df.columns, ["予約件数", "予約"], "予約件数")
+    try:
+        year_col = find_column(df.columns, ["年度", "年"], "年度")
+        month_no_col = find_column(df.columns, ["月番号", "月番"], "月番号")
+        # 月列はなくても月番号から作れるため任意扱い
+        try:
+            month_col = find_column(df.columns, ["月ツキ", "月"], "月")
+        except Exception:
+            month_col = None
+        working_days_col = find_column(
+            df.columns,
+            ["稼働日数", "稼働", "稼動日数", "稼動", "営業日数", "診療日数"],
+            "稼働日数",
+        )
+        reservation_col = find_column(
+            df.columns,
+            ["予約件数", "予約数", "予約", "件数"],
+            "予約件数",
+        )
+    except ValueError as e:
+        current_columns = " / ".join([str(c) for c in df.columns.tolist()])
+        raise ValueError(
+            f"{e}\n読み込みシート: {source_sheet_name}、ヘッダー行: {source_header_row}行目\n"
+            f"現在アプリが認識している列名: {current_columns}"
+        )
 
-    df = df.rename(
-        columns={
-            year_col: "年度",
-            month_col: "月",
-            month_no_col: "月番号",
-            working_days_col: "稼働日数",
-            reservation_col: "予約件数",
-        }
-    )
+    rename_map = {
+        year_col: "年度",
+        month_no_col: "月番号",
+        working_days_col: "稼働日数",
+        reservation_col: "予約件数",
+    }
+    if month_col is not None:
+        rename_map[month_col] = "月"
+
+    df = df.rename(columns=rename_map)
+    required_cols = ["年度", "月番号", "稼働日数", "予約件数"]
+    if "月" not in df.columns:
+        df["月"] = pd.NA
 
     df = df[["年度", "月", "月番号", "稼働日数", "予約件数"]].copy()
     df["年度"] = df["年度"].astype(str).str.strip().str.upper()
@@ -236,9 +346,7 @@ def standardize_renkei_data(raw_df: pd.DataFrame) -> pd.DataFrame:
     df["稼働日数"] = pd.to_numeric(df["稼働日数"], errors="coerce")
     df["予約件数"] = pd.to_numeric(df["予約件数"], errors="coerce")
 
-    # 入力ミス対策：
-    # 稼働日数が数百〜千件台、予約件数が20日前後になっている場合は、
-    # 「稼働日数」と「予約件数」が逆に入力されている可能性が高いため自動補正する。
+    # 入力ミス対策：稼働日数と予約件数が逆の場合は自動補正
     auto_swapped_working_days_reservations = False
     valid_pair = df[df["稼働日数"].notna() & df["予約件数"].notna()].copy()
     if not valid_pair.empty:
@@ -253,37 +361,20 @@ def standardize_renkei_data(raw_df: pd.DataFrame) -> pd.DataFrame:
     df["月"] = df["月番号"].map(MONTH_LABELS)
     df["年度内順"] = df["月番号"].map(MONTH_ORDER)
 
-    # 同じ年度・月が複数ある場合は合算。稼働日数は最大値を採用。
+    def sum_keep_blank(series: pd.Series):
+        return series.sum(min_count=1)
+
+    # 同じ年度・月が複数ある場合は合算。予約件数が全空欄の月は空欄を維持。
     df = (
         df.groupby(["年度", "月番号", "月", "年度内順"], as_index=False)
-        .agg({"稼働日数": "max", "予約件数": "sum"})
+        .agg({"稼働日数": "max", "予約件数": sum_keep_blank})
         .sort_values(["年度", "年度内順"])
     )
 
-    # 注意：groupby sum は全欠損を 0 にしがちなので、元データで全欠損だった行は空欄へ戻す
-    blank_keys = (
-        raw_df.copy()
-        .rename(columns={year_col: "年度", month_col: "月", month_no_col: "月番号", reservation_col: "予約件数"})
-    )
-    blank_keys["年度"] = blank_keys["年度"].astype(str).str.strip().str.upper()
-    blank_keys["月番号"] = pd.to_numeric(blank_keys["月番号"], errors="coerce").fillna(blank_keys["月"].map(parse_month))
-    blank_keys = blank_keys[blank_keys["予約件数"].isna()][["年度", "月番号"]].drop_duplicates()
-    nonblank_keys = (
-        raw_df.copy()
-        .rename(columns={year_col: "年度", month_col: "月", month_no_col: "月番号", reservation_col: "予約件数"})
-    )
-    nonblank_keys["年度"] = nonblank_keys["年度"].astype(str).str.strip().str.upper()
-    nonblank_keys["月番号"] = pd.to_numeric(nonblank_keys["月番号"], errors="coerce").fillna(nonblank_keys["月"].map(parse_month))
-    nonblank_keys = nonblank_keys[nonblank_keys["予約件数"].notna()][["年度", "月番号"]].drop_duplicates()
-    only_blank = blank_keys.merge(nonblank_keys, on=["年度", "月番号"], how="left", indicator=True)
-    only_blank = only_blank[only_blank["_merge"] == "left_only"][["年度", "月番号"]]
-    if not only_blank.empty:
-        blank_set = set(map(tuple, only_blank[["年度", "月番号"]].values.tolist()))
-        df.loc[df.apply(lambda r: (r["年度"], r["月番号"]) in blank_set, axis=1), "予約件数"] = pd.NA
-
     df.attrs["auto_swapped_working_days_reservations"] = auto_swapped_working_days_reservations
+    df.attrs["source_sheet_name"] = source_sheet_name
+    df.attrs["source_header_row"] = source_header_row
     return df
-
 
 def filter_period(df: pd.DataFrame, years: list[str], months: list[int]) -> pd.DataFrame:
     return df[df["年度"].isin(years) & df["月番号"].isin(months)].copy()
@@ -459,6 +550,8 @@ try:
         data_source = f"GitHub: {owner}/{repo}/{file_path}"
     df = standardize_renkei_data(raw)
     auto_swapped = bool(df.attrs.get("auto_swapped_working_days_reservations", False))
+    source_sheet_name = df.attrs.get("source_sheet_name", "不明")
+    source_header_row = df.attrs.get("source_header_row", "不明")
 except Exception as e:
     st.error("データを読み込めませんでした。Excel様式またはGitHub保存先を確認してください。")
     st.exception(e)
@@ -516,6 +609,7 @@ st.markdown(
     f"""
     <div class="note-box">
     <b>読込元：</b>{data_source}<br>
+    <b>読込シート：</b>{source_sheet_name} ／ ヘッダー行: {source_header_row}<br>
     <b>分析条件：</b>{target_year} vs {comparison_year} ／ {start_label}〜{end_label}<br>
     <span class="small-caption">予約件数が空欄の月は、未来月・未入力月として0件扱いせず計算対象外にしています。</span>
     </div>
@@ -590,4 +684,4 @@ with st.expander("集計データを確認", expanded=False):
         mime="text/csv",
     )
 
-st.caption("RENKEI 初期復活版：元データは月次集計済みExcel。詳細な紹介元・診療科別分析は、将来的にLINK/STRIKE側と連携する想定。")
+st.caption("RENKEI v3：元データは月次集計済みExcel。詳細な紹介元・診療科別分析は、将来的にLINK/STRIKE側と連携する想定。")
