@@ -57,7 +57,7 @@ st.markdown(
         font-size: 2.0rem;
         font-weight: 800;
         letter-spacing: 0.02em;
-        margin-bottom: 0.15rem;
+        margin-bottom: 1.0rem;
     }
     .renkei-subtitle {
         color: rgba(120,120,120,0.95);
@@ -699,11 +699,6 @@ def build_cumulative_chart(chart_df: pd.DataFrame, years: list[str], role_years:
 # 画面本体
 # =========================================================
 st.markdown('<div class="renkei-title">RENKEI</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="renkei-subtitle">地域連携室 予約業務実績ダッシュボード｜月次・累計・1日平均を確認</div>',
-    unsafe_allow_html=True,
-)
-
 with st.sidebar:
     st.header("データ読込")
     uploaded_file = st.file_uploader("Excelをアップロード（任意）", type=["xlsx"])
@@ -779,17 +774,6 @@ if auto_swapped:
         "アプリ側で自動補正して集計しています。Excelは「稼働日数＝20日前後」「予約件数＝数百件〜」の並びに直すのがおすすめです。"
     )
 
-st.markdown(
-    f"""
-    <div class="note-box">
-    <b>読込元：</b>{data_source}<br>
-    <b>読込シート：</b>{source_sheet_name} ／ ヘッダー行: {source_header_row}<br>
-    <b>分析条件：</b>{target_year} vs {comparison_year} ／ {start_label}〜{end_label}<br>
-    <span class="small-caption">予約件数が空欄の月は、未来月・未入力月として0件扱いせず計算対象外にしています。</span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 target_df = period_df[period_df["年度"] == target_year]
 comp_df = period_df[period_df["年度"] == comparison_year]
