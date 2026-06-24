@@ -36,6 +36,10 @@ DEFAULT_FILE_PATH = "latest.xlsx"
 COLOR_TARGET = "#F97316"      # 対象年度：オレンジ
 COLOR_COMPARISON = "#38BDF8"  # 比較年度：シアン
 COLOR_OTHER = "#94A3B8"       # その他：グレー
+COLOR_ABOVE_PREV = "#2563EB"  # 前年度実績を上回る月：青
+COLOR_BELOW_PREV = "#EF4444"  # 前年度実績を下回る月：赤
+COLOR_EQUAL_PREV = "#94A3B8"  # 前年度実績と同値・比較不能：グレー
+COLOR_PREV_LINE = "#CBD5E1"   # 前年度実績の折れ線：薄いグレー
 
 FISCAL_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3]
 MONTH_LABELS = {m: f"{m}月" for m in FISCAL_MONTHS}
@@ -424,7 +428,14 @@ def apply_common_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
         title={"text": title, "x": 0.02, "xanchor": "left"},
         height=390,
         margin=dict(l=40, r=20, t=60, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            traceorder="normal",
+        ),
         hovermode="x unified",
     )
     fig.update_xaxes(title_text="月", categoryorder="array", categoryarray=[MONTH_LABELS[m] for m in FISCAL_MONTHS])
@@ -432,24 +443,169 @@ def apply_common_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
     return fig
 
 
-def build_monthly_trend_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
+def get_role_years(role_years: Optional[list[str]], years: list[str]) -> tuple[Optional[str], Optional[str], dict[str, int]]:
+    """
+    混合グラフ用の年度役割を返す。
+    role_years は [対象年度, 比較年度] の想定。
+    - 対象年度：棒グラフ
+    - 比較年度：折れ線グラフ
+    凡例は早い年度から表示する。
+    """
     role_years = role_years or years
-    fig = go.Figure()
-    actual = chart_df[chart_df["予約件数"].notna()].sort_values(["年度", "年度内順"])
-    for year in years:
-        d = actual[actual["年度"] == year]
-        fig.add_trace(
-            go.Scatter(
-                x=d["月"],
-                y=d["予約件数"],
-                mode="lines+markers",
-                name=get_series_label(year, role_years),
-                connectgaps=False,
-                line=dict(color=get_series_color(year, role_years), width=3),
-                marker=dict(color=get_series_color(year, role_years), size=7),
-            )
+    target_year = role_years[0] if len(role_years) >= 1 else None
+    comparison_year = role_years[1] if len(role_years) >= 2 else None
+    ordered = sort_years_ascending([y for y in [target_year, comparison_year] if y is not None])
+    legend_rank = {year: idx + 1 for idx, year in enumerate(ordered)}
+    return target_year, comparison_year, legend_rank
+
+
+def compare_bar_colors(
+    target_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    y_col: str,
+) -> list[str]:
+    """
+    対象年度の棒色を、同じ月の比較年度実績と比べて自動判定する。
+    - 上回る：青
+    - 下回る：赤
+    - 同値または比較年度データなし：グレー
+    """
+    comparison_values = comparison_df.set_index("月番号")[y_col].to_dict() if not comparison_df.empty else {}
+    colors: list[str] = []
+    for _, row in target_df.iterrows():
+        target_value = row.get(y_col)
+        comparison_value = comparison_values.get(row.get("月番号"))
+        if pd.isna(target_value) or comparison_value is None or pd.isna(comparison_value):
+            colors.append(COLOR_EQUAL_PREV)
+        elif float(target_value) > float(comparison_value):
+            colors.append(COLOR_ABOVE_PREV)
+        elif float(target_value) < float(comparison_value):
+            colors.append(COLOR_BELOW_PREV)
+        else:
+            colors.append(COLOR_EQUAL_PREV)
+    return colors
+
+
+def add_target_bar_trace(
+    fig: go.Figure,
+    target_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    year: str,
+    y_col: str,
+    role_years: list[str],
+    legend_rank: dict[str, int],
+) -> None:
+    """対象年度を棒で表示し、前年度比に応じて棒色を青・赤にする。"""
+    bar_colors = compare_bar_colors(target_df, comparison_df, y_col)
+    fig.add_trace(
+        go.Bar(
+            x=target_df["月"],
+            y=target_df[y_col],
+            name=f"{get_series_label(year, role_years)}｜棒",
+            marker_color=bar_colors,
+            opacity=0.82,
+            text=target_df[y_col],
+            texttemplate="%{text:,.1f}" if y_col == "1日平均" else "%{text:,.0f}",
+            textposition="outside",
+            legendrank=legend_rank.get(year, 99),
+            hovertemplate=(
+                "年度=%{fullData.name}<br>"
+                "月=%{x}<br>"
+                f"{y_col}=%{{y:,.1f}}" if y_col == "1日平均" else
+                "年度=%{fullData.name}<br>"
+                "月=%{x}<br>"
+                f"{y_col}=%{{y:,.0f}}"
+            ),
         )
-    return apply_common_layout(fig, "月推移｜予約件数", "予約件数")
+    )
+
+
+def add_comparison_line_trace(
+    fig: go.Figure,
+    comparison_df: pd.DataFrame,
+    year: str,
+    y_col: str,
+    role_years: list[str],
+    legend_rank: dict[str, int],
+) -> None:
+    """比較年度を折れ線で表示する。"""
+    fig.add_trace(
+        go.Scatter(
+            x=comparison_df["月"],
+            y=comparison_df[y_col],
+            mode="lines+markers",
+            name=f"{get_series_label(year, role_years)}｜線",
+            connectgaps=False,
+            line=dict(color=COLOR_PREV_LINE, width=3),
+            marker=dict(color=COLOR_PREV_LINE, size=8),
+            legendrank=legend_rank.get(year, 99),
+        )
+    )
+
+
+def build_mixed_year_chart(
+    actual: pd.DataFrame,
+    y_col: str,
+    title: str,
+    y_title: str,
+    years: list[str],
+    role_years: Optional[list[str]] = None,
+) -> go.Figure:
+    """
+    対象年度を棒、比較年度を折れ線で表示する混合グラフ。
+    棒色は同じ月の比較年度実績を上回れば青、下回れば赤。
+    """
+    role_years = role_years or years
+    target_year, comparison_year, legend_rank = get_role_years(role_years, years)
+    actual = actual[actual[y_col].notna()].sort_values(["年度", "年度内順"]).copy()
+
+    fig = go.Figure()
+
+    comparison_df = pd.DataFrame()
+    if comparison_year in years:
+        comparison_df = actual[actual["年度"] == comparison_year].copy()
+
+    # 棒を先に描画し、折れ線を後から重ねる。凡例順は legendrank で早い年度順に制御する。
+    if target_year in years:
+        target_df = actual[actual["年度"] == target_year].copy()
+        if not target_df.empty:
+            add_target_bar_trace(fig, target_df, comparison_df, target_year, y_col, role_years, legend_rank)
+
+    if comparison_year in years and not comparison_df.empty:
+        add_comparison_line_trace(fig, comparison_df, comparison_year, y_col, role_years, legend_rank)
+
+    # 比較年度がない場合や2年度以外の保険。対象・比較以外は従来に近い折れ線表示。
+    extra_years = [y for y in years if y not in [target_year, comparison_year]]
+    for year in extra_years:
+        extra_df = actual[actual["年度"] == year]
+        if not extra_df.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=extra_df["月"],
+                    y=extra_df[y_col],
+                    mode="lines+markers",
+                    name=get_series_label(year, role_years),
+                    connectgaps=False,
+                    line=dict(color=get_series_color(year, role_years), width=3),
+                    marker=dict(color=get_series_color(year, role_years), size=7),
+                    legendrank=legend_rank.get(year, 99),
+                )
+            )
+
+    fig.update_layout(barmode="overlay")
+    return apply_common_layout(fig, title, y_title)
+
+
+def build_monthly_trend_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
+    actual = chart_df[chart_df["予約件数"].notna()].sort_values(["年度", "年度内順"]).copy()
+    return build_mixed_year_chart(
+        actual=actual,
+        y_col="予約件数",
+        title="月推移｜予約件数（棒：対象年度／線：比較年度）",
+        y_title="予約件数",
+        years=years,
+        role_years=role_years,
+    )
 
 
 def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
@@ -483,50 +639,32 @@ def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str], role_y
 
 
 def build_daily_average_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
-    role_years = role_years or years
     actual = chart_df[
         chart_df["予約件数"].notna() & chart_df["稼働日数"].notna() & (chart_df["稼働日数"] > 0)
     ].copy()
     actual["1日平均"] = actual["予約件数"] / actual["稼働日数"]
     actual = actual.sort_values(["年度", "年度内順"])
-
-    fig = go.Figure()
-    for year in years:
-        d = actual[actual["年度"] == year]
-        fig.add_trace(
-            go.Scatter(
-                x=d["月"],
-                y=d["1日平均"],
-                mode="lines+markers",
-                name=get_series_label(year, role_years),
-                connectgaps=False,
-                line=dict(color=get_series_color(year, role_years), width=3),
-                marker=dict(color=get_series_color(year, role_years), size=7),
-            )
-        )
-    return apply_common_layout(fig, "1日平均｜予約件数 ÷ 稼働日数", "1日平均予約件数")
+    return build_mixed_year_chart(
+        actual=actual,
+        y_col="1日平均",
+        title="1日平均｜予約件数 ÷ 稼働日数（棒：対象年度／線：比較年度）",
+        y_title="1日平均予約件数",
+        years=years,
+        role_years=role_years,
+    )
 
 
 def build_cumulative_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
-    role_years = role_years or years
     actual = chart_df[chart_df["予約件数"].notna()].sort_values(["年度", "年度内順"]).copy()
     actual["累計"] = actual.groupby("年度")["予約件数"].cumsum()
-
-    fig = go.Figure()
-    for year in years:
-        d = actual[actual["年度"] == year]
-        fig.add_trace(
-            go.Scatter(
-                x=d["月"],
-                y=d["累計"],
-                mode="lines+markers",
-                name=get_series_label(year, role_years),
-                connectgaps=False,
-                line=dict(color=get_series_color(year, role_years), width=3),
-                marker=dict(color=get_series_color(year, role_years), size=7),
-            )
-        )
-    return apply_common_layout(fig, "累計｜期間内予約件数", "累計予約件数")
+    return build_mixed_year_chart(
+        actual=actual,
+        y_col="累計",
+        title="累計｜期間内予約件数（棒：対象年度／線：比較年度）",
+        y_title="累計予約件数",
+        years=years,
+        role_years=role_years,
+    )
 
 
 # =========================================================
@@ -692,4 +830,4 @@ with st.expander("集計データを確認", expanded=False):
         mime="text/csv",
     )
 
-st.caption("RENKEI v4：元データは月次集計済みExcel。詳細な紹介元・診療科別分析は、将来的にLINK/STRIKE側と連携する想定。")
+st.caption("RENKEI v5：元データは月次集計済みExcel。月推移・1日平均・累計は、対象年度を棒、比較年度を折れ線で表示。棒色は前年度超過＝青、前年度未満＝赤。")
