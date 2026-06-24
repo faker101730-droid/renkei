@@ -268,6 +268,11 @@ def get_series_label(year: str, years: list[str]) -> str:
     return str(year)
 
 
+def sort_years_ascending(years: list[str]) -> list[str]:
+    """グラフ表示・凡例表示は早い年度から並べる。"""
+    return sorted(years, key=fiscal_year_sort_key)
+
+
 # =========================================================
 # データ読込・整形
 # =========================================================
@@ -427,7 +432,8 @@ def apply_common_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
     return fig
 
 
-def build_monthly_trend_chart(chart_df: pd.DataFrame, years: list[str]) -> go.Figure:
+def build_monthly_trend_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
+    role_years = role_years or years
     fig = go.Figure()
     actual = chart_df[chart_df["予約件数"].notna()].sort_values(["年度", "年度内順"])
     for year in years:
@@ -437,16 +443,17 @@ def build_monthly_trend_chart(chart_df: pd.DataFrame, years: list[str]) -> go.Fi
                 x=d["月"],
                 y=d["予約件数"],
                 mode="lines+markers",
-                name=get_series_label(year, years),
+                name=get_series_label(year, role_years),
                 connectgaps=False,
-                line=dict(color=get_series_color(year, years), width=3),
-                marker=dict(color=get_series_color(year, years), size=7),
+                line=dict(color=get_series_color(year, role_years), width=3),
+                marker=dict(color=get_series_color(year, role_years), size=7),
             )
         )
     return apply_common_layout(fig, "月推移｜予約件数", "予約件数")
 
 
-def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str]) -> go.Figure:
+def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
+    role_years = role_years or years
     bars = []
     for year in years:
         d = chart_df[(chart_df["年度"] == year) & chart_df["予約件数"].notna()]
@@ -462,7 +469,7 @@ def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str]) -> go.
             text=bar_df["月平均"],
             texttemplate="%{text:,.1f}",
             textposition="outside",
-            marker_color=[get_series_color(y, years) for y in bar_df["年度"]],
+            marker_color=[get_series_color(y, role_years) for y in bar_df["年度"]],
         )
     )
     fig.update_layout(
@@ -475,7 +482,8 @@ def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str]) -> go.
     return fig
 
 
-def build_daily_average_chart(chart_df: pd.DataFrame, years: list[str]) -> go.Figure:
+def build_daily_average_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
+    role_years = role_years or years
     actual = chart_df[
         chart_df["予約件数"].notna() & chart_df["稼働日数"].notna() & (chart_df["稼働日数"] > 0)
     ].copy()
@@ -490,16 +498,17 @@ def build_daily_average_chart(chart_df: pd.DataFrame, years: list[str]) -> go.Fi
                 x=d["月"],
                 y=d["1日平均"],
                 mode="lines+markers",
-                name=get_series_label(year, years),
+                name=get_series_label(year, role_years),
                 connectgaps=False,
-                line=dict(color=get_series_color(year, years), width=3),
-                marker=dict(color=get_series_color(year, years), size=7),
+                line=dict(color=get_series_color(year, role_years), width=3),
+                marker=dict(color=get_series_color(year, role_years), size=7),
             )
         )
     return apply_common_layout(fig, "1日平均｜予約件数 ÷ 稼働日数", "1日平均予約件数")
 
 
-def build_cumulative_chart(chart_df: pd.DataFrame, years: list[str]) -> go.Figure:
+def build_cumulative_chart(chart_df: pd.DataFrame, years: list[str], role_years: Optional[list[str]] = None) -> go.Figure:
+    role_years = role_years or years
     actual = chart_df[chart_df["予約件数"].notna()].sort_values(["年度", "年度内順"]).copy()
     actual["累計"] = actual.groupby("年度")["予約件数"].cumsum()
 
@@ -511,10 +520,10 @@ def build_cumulative_chart(chart_df: pd.DataFrame, years: list[str]) -> go.Figur
                 x=d["月"],
                 y=d["累計"],
                 mode="lines+markers",
-                name=get_series_label(year, years),
+                name=get_series_label(year, role_years),
                 connectgaps=False,
-                line=dict(color=get_series_color(year, years), width=3),
-                marker=dict(color=get_series_color(year, years), size=7),
+                line=dict(color=get_series_color(year, role_years), width=3),
+                marker=dict(color=get_series_color(year, role_years), size=7),
             )
         )
     return apply_common_layout(fig, "累計｜期間内予約件数", "累計予約件数")
@@ -538,8 +547,6 @@ with st.sidebar:
     branch = safe_secret("GITHUB_BRANCH", DEFAULT_BRANCH)
     file_path = safe_secret("GITHUB_FILE_PATH", DEFAULT_FILE_PATH)
 
-    st.caption("アップロードがない場合はGitHubの latest.xlsx を読み込みます。")
-    st.code(f"{owner}/{repo}/{file_path}", language="text")
 
 try:
     if uploaded_file is not None:
@@ -597,6 +604,7 @@ start_month = int(start_label.replace("月", ""))
 end_month = int(end_label.replace("月", ""))
 selected_months = get_month_range(start_month, end_month)
 selected_years = [target_year, comparison_year]
+display_years = sort_years_ascending(selected_years)
 period_df = filter_period(df, selected_years, selected_months)
 
 if auto_swapped:
@@ -662,15 +670,15 @@ st.divider()
 
 left, right = st.columns(2)
 with left:
-    st.plotly_chart(build_monthly_trend_chart(period_df, selected_years), use_container_width=True)
+    st.plotly_chart(build_monthly_trend_chart(period_df, display_years, selected_years), use_container_width=True)
 with right:
-    st.plotly_chart(build_monthly_average_chart(period_df, selected_years), use_container_width=True)
+    st.plotly_chart(build_monthly_average_chart(period_df, display_years, selected_years), use_container_width=True)
 
 left, right = st.columns(2)
 with left:
-    st.plotly_chart(build_daily_average_chart(period_df, selected_years), use_container_width=True)
+    st.plotly_chart(build_daily_average_chart(period_df, display_years, selected_years), use_container_width=True)
 with right:
-    st.plotly_chart(build_cumulative_chart(period_df, selected_years), use_container_width=True)
+    st.plotly_chart(build_cumulative_chart(period_df, display_years, selected_years), use_container_width=True)
 
 with st.expander("集計データを確認", expanded=False):
     display_df = period_df.sort_values(["年度", "年度内順"])[["年度", "月", "月番号", "稼働日数", "予約件数"]]
@@ -684,4 +692,4 @@ with st.expander("集計データを確認", expanded=False):
         mime="text/csv",
     )
 
-st.caption("RENKEI v3：元データは月次集計済みExcel。詳細な紹介元・診療科別分析は、将来的にLINK/STRIKE側と連携する想定。")
+st.caption("RENKEI v4：元データは月次集計済みExcel。詳細な紹介元・診療科別分析は、将来的にLINK/STRIKE側と連携する想定。")
