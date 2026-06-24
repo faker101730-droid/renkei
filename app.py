@@ -426,20 +426,37 @@ def calc_metrics(df: pd.DataFrame) -> dict[str, Optional[float]]:
 def apply_common_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
     fig.update_layout(
         title={"text": title, "x": 0.02, "xanchor": "left", "y": 0.98, "yanchor": "top"},
-        height=405,
-        margin=dict(l=40, r=20, t=95, b=40),
+        height=420,
+        margin=dict(l=48, r=145, t=70, b=52),
         legend=dict(
-            orientation="h",
+            orientation="v",
             yanchor="top",
-            y=1.02,
-            xanchor="center",
-            x=0.5,
+            y=1.0,
+            xanchor="left",
+            x=1.02,
             traceorder="normal",
+            font=dict(size=13),
+            bgcolor="rgba(120,120,120,0.08)",
+            bordercolor="rgba(120,120,120,0.25)",
+            borderwidth=1,
         ),
         hovermode="x unified",
     )
-    fig.update_xaxes(title_text="月", categoryorder="array", categoryarray=[MONTH_LABELS[m] for m in FISCAL_MONTHS])
-    fig.update_yaxes(title_text=y_title, rangemode="tozero")
+    fig.update_xaxes(
+        title_text="月",
+        categoryorder="array",
+        categoryarray=[MONTH_LABELS[m] for m in FISCAL_MONTHS],
+        tickfont=dict(size=14),
+        title_font=dict(size=15),
+        automargin=True,
+    )
+    fig.update_yaxes(
+        title_text=y_title,
+        rangemode="tozero",
+        tickfont=dict(size=14),
+        title_font=dict(size=15),
+        automargin=True,
+    )
     return fig
 
 
@@ -630,11 +647,22 @@ def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str], role_y
     )
     fig.update_layout(
         title={"text": "月平均｜期間内の実績月平均", "x": 0.02, "xanchor": "left"},
-        height=390,
-        margin=dict(l=40, r=20, t=60, b=40),
+        height=420,
+        margin=dict(l=48, r=28, t=70, b=52),
         showlegend=False,
     )
-    fig.update_yaxes(title_text="月平均予約件数", rangemode="tozero")
+    fig.update_xaxes(
+        tickfont=dict(size=14),
+        title_font=dict(size=15),
+        automargin=True,
+    )
+    fig.update_yaxes(
+        title_text="月平均予約件数",
+        rangemode="tozero",
+        tickfont=dict(size=14),
+        title_font=dict(size=15),
+        automargin=True,
+    )
     return fig
 
 
