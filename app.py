@@ -425,12 +425,12 @@ def calc_metrics(df: pd.DataFrame) -> dict[str, Optional[float]]:
 # =========================================================
 def apply_common_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
     fig.update_layout(
-        title={"text": title, "x": 0.02, "xanchor": "left"},
-        height=390,
-        margin=dict(l=40, r=20, t=60, b=40),
+        title={"text": title, "x": 0.02, "xanchor": "left", "y": 0.98, "yanchor": "top"},
+        height=405,
+        margin=dict(l=40, r=20, t=95, b=40),
         legend=dict(
             orientation="h",
-            yanchor="bottom",
+            yanchor="top",
             y=1.02,
             xanchor="center",
             x=0.5,
