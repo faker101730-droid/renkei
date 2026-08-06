@@ -27,6 +27,575 @@ st.set_page_config(
     layout="wide",
 )
 
+# -----------------------------
+def render_broly_page() -> None:
+    st.markdown(
+        r"""
+<style>
+  /* BROLY page-only background: synchronized with BROLY COMMAND CENTER */
+  [data-testid="stAppViewContainer"],
+  [data-testid="stAppViewContainer"] > .main,
+  [data-testid="stAppViewContainer"] > .main > div,
+  section.main,
+  section.main > div.block-container{
+    background-color:#050A12 !important;
+  }
+  [data-testid="stAppViewContainer"],
+  [data-testid="stAppViewContainer"] > .main{
+    background:
+      radial-gradient(950px 640px at 52% 23%, rgba(11,124,255,.18), transparent 67%),
+      radial-gradient(760px 520px at 94% 6%, rgba(128,93,255,.10), transparent 62%),
+      radial-gradient(650px 520px at 0% 35%, rgba(57,215,255,.08), transparent 65%),
+      linear-gradient(180deg,#050A12 0%,#07101C 52%,#040810 100%) !important;
+  }
+  [data-testid="stAppViewContainer"] > .main > div,
+  section.main,
+  section.main > div.block-container{
+    background:transparent !important;
+  }
+  [data-testid="stAppViewContainer"]::after{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:0;
+    opacity:.18;
+    background-image:
+      linear-gradient(rgba(57,215,255,.06) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(57,215,255,.045) 1px,transparent 1px);
+    background-size:34px 34px;
+    -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.8),transparent 92%);
+    mask-image:linear-gradient(to bottom,rgba(0,0,0,.8),transparent 92%);
+  }
+  section.main > div.block-container{
+    position:relative;
+    z-index:1;
+  }
+
+  .broly-page-shell{
+    --bc:#39D7FF;
+    --bb:#0B7CFF;
+    --bv:#805DFF;
+    position:relative;
+    width:100%;
+    min-height:735px;
+    box-sizing:border-box;
+    overflow:hidden;
+    border-radius:0;
+    border:none;
+    background:transparent;
+    box-shadow:none;
+  }
+  .broly-page-shell:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:.27;
+    background:
+      linear-gradient(rgba(57,215,255,.045) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(57,215,255,.04) 1px,transparent 1px);
+    background-size:34px 34px;
+    -webkit-mask-image:radial-gradient(circle at 50% 38%,#000 0 26%,rgba(0,0,0,.55) 52%,transparent 82%);
+    mask-image:radial-gradient(circle at 50% 38%,#000 0 26%,rgba(0,0,0,.55) 52%,transparent 82%);
+  }
+  .broly-page-head{
+    position:relative;
+    z-index:20;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:24px;
+    padding:28px 30px 12px;
+  }
+  .broly-page-brand{
+    min-width:0;
+  }
+  .broly-page-eyebrow{
+    color:rgba(57,215,255,.54);
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:2.3px;
+    line-height:1;
+    white-space:nowrap;
+  }
+  .broly-page-title{
+    margin-top:8px;
+    color:rgba(244,252,255,.98);
+    font-size:25px;
+    font-weight:900;
+    letter-spacing:2.0px;
+    line-height:1.05;
+    text-shadow:0 0 13px rgba(57,215,255,.12);
+    white-space:nowrap;
+  }
+  .broly-page-sub{
+    margin-top:7px;
+    color:rgba(173,207,220,.58);
+    font-size:9px;
+    font-weight:750;
+    letter-spacing:1.15px;
+    line-height:1.4;
+  }
+  .broly-page-node{
+    text-align:right;
+    padding-top:2px;
+    white-space:nowrap;
+  }
+  .broly-page-node-main{
+    color:rgba(57,215,255,.72);
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:1.65px;
+  }
+  .broly-page-node-sub{
+    margin-top:6px;
+    color:rgba(164,198,212,.44);
+    font-size:7px;
+    font-weight:800;
+    letter-spacing:1.1px;
+  }
+
+  .broly-page-core-stage{
+    position:relative;
+    z-index:10;
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:395px;
+    padding-top:46px;
+  }
+  .broly-page-core-wrap{
+    position:relative;
+    width:320px;
+    height:320px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    isolation:isolate;
+  }
+  .broly-page-core-wrap:before{
+    content:"";
+    position:absolute;
+    inset:12px;
+    border-radius:50%;
+    background:radial-gradient(circle,rgba(57,215,255,.09),transparent 62%);
+    box-shadow:
+      0 0 80px rgba(11,124,255,.13),
+      0 0 130px rgba(57,215,255,.05);
+  }
+
+  .broly-page-halo{
+    position:absolute;
+    inset:13px;
+    border-radius:50%;
+    z-index:0;
+    background:
+      conic-gradient(from 215deg,
+        transparent 0 7%,rgba(57,215,255,.60) 8% 11%,transparent 12% 29%,
+        rgba(128,93,255,.38) 30% 34%,transparent 35% 60%,
+        rgba(57,215,255,.46) 61% 65%,transparent 66% 86%,
+        rgba(215,250,255,.72) 87% 89%,transparent 90% 100%);
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));
+    mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));
+    box-shadow:0 0 32px rgba(57,215,255,.10);
+    animation:brolyPageSpin 24s linear infinite;
+  }
+
+  .broly-page-ticks{
+    position:absolute;
+    inset:28px;
+    border-radius:50%;
+    z-index:0;
+    opacity:.44;
+    background:repeating-conic-gradient(from -2deg,rgba(188,244,255,.58) 0 1deg,transparent 1deg 6deg);
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px),#000 calc(100% - 3px),transparent calc(100% - 2px));
+    mask:radial-gradient(farthest-side,transparent calc(100% - 8px),#000 calc(100% - 7px),#000 calc(100% - 3px),transparent calc(100% - 2px));
+    animation:brolyPageSpinReverse 58s linear infinite;
+  }
+
+  .broly-page-arc{
+    position:absolute;
+    border-radius:50%;
+    z-index:1;
+    pointer-events:none;
+    border:2px solid transparent;
+  }
+  .broly-page-arc.a{
+    inset:39px;
+    border-top-color:rgba(57,215,255,.55);
+    border-right-color:rgba(57,215,255,.10);
+    transform:rotate(23deg);
+    box-shadow:0 -2px 14px rgba(57,215,255,.16);
+    animation:brolyPageArcA 13s ease-in-out infinite alternate;
+  }
+  .broly-page-arc.b{
+    inset:56px;
+    border-bottom-color:rgba(128,93,255,.50);
+    border-left-color:rgba(128,93,255,.12);
+    transform:rotate(-31deg);
+    box-shadow:0 2px 14px rgba(128,93,255,.13);
+    animation:brolyPageArcB 17s ease-in-out infinite alternate;
+  }
+  .broly-page-arc.c{
+    inset:76px;
+    border-top-color:rgba(214,250,255,.34);
+    border-left-color:rgba(57,215,255,.18);
+    transform:rotate(92deg);
+    animation:brolyPageSpinReverse 21s linear infinite;
+  }
+
+  .broly-page-ring{
+    position:absolute;
+    inset:31px;
+    border-radius:50%;
+    z-index:1;
+    border:1px solid rgba(57,215,255,.27);
+    box-shadow:
+      0 0 42px rgba(11,124,255,.17),
+      inset 0 0 42px rgba(57,215,255,.075);
+    animation:brolyPageSpin 21s linear infinite;
+  }
+  .broly-page-ring:before,
+  .broly-page-ring:after{
+    content:"";
+    position:absolute;
+    border-radius:50%;
+  }
+  .broly-page-ring:before{
+    inset:24px;
+    border:1px dashed rgba(57,215,255,.28);
+    animation:brolyPageSpinReverse 14s linear infinite;
+  }
+  .broly-page-ring:after{
+    inset:52px;
+    border:1px solid rgba(128,93,255,.38);
+    box-shadow:
+      0 0 38px rgba(128,93,255,.12),
+      inset 0 0 24px rgba(128,93,255,.045);
+  }
+
+  .broly-page-ring-inner{
+    position:absolute;
+    inset:87px;
+    z-index:2;
+    border-radius:50%;
+    border:1px solid rgba(175,240,255,.18);
+    box-shadow:
+      0 0 24px rgba(57,215,255,.08),
+      inset 0 0 20px rgba(57,215,255,.05);
+  }
+  .broly-page-ring-inner:before{
+    content:"";
+    position:absolute;
+    inset:-9px;
+    border-radius:50%;
+    border:1px dotted rgba(57,215,255,.16);
+    animation:brolyPageSpin 9s linear infinite;
+  }
+
+  .broly-page-sat{
+    --sat:6px;
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:var(--sat);
+    height:var(--sat);
+    margin:calc(var(--sat)/-2);
+    border-radius:50%;
+    z-index:7;
+    background:#E4FCFF;
+    box-shadow:
+      0 0 7px #E4FCFF,
+      0 0 16px rgba(57,215,255,.90),
+      0 0 25px rgba(11,124,255,.42);
+    transform-origin:0 0;
+  }
+  .broly-page-sat.a{animation:brolyPageOrbitA 8.5s linear infinite;}
+  .broly-page-sat.b{--sat:4px;opacity:.72;animation:brolyPageOrbitB 12.5s linear infinite;}
+  .broly-page-sat.c{--sat:3px;opacity:.52;animation:brolyPageOrbitC 17s linear infinite;}
+
+  .broly-page-orb{
+    position:relative;
+    z-index:5;
+    width:148px;
+    height:148px;
+    border-radius:50%;
+    background:
+      radial-gradient(circle at 50% 50%,rgba(232,253,255,.98) 0 3%,rgba(141,238,255,.88) 4% 8%,rgba(57,215,255,.50) 11%,transparent 19%),
+      radial-gradient(circle at 41% 34%,rgba(222,252,255,.98) 0 1.4%,transparent 2.4%),
+      radial-gradient(circle at 58% 48%,rgba(57,215,255,.92),rgba(11,124,255,.46) 31%,rgba(31,69,133,.17) 50%,rgba(5,12,25,.34) 63%,rgba(1,5,12,.98) 75%);
+    border:1px solid rgba(112,230,255,.68);
+    box-shadow:
+      0 0 18px rgba(196,249,255,.34),
+      0 0 48px rgba(57,215,255,.36),
+      0 0 100px rgba(11,124,255,.29),
+      inset 0 0 25px rgba(212,250,255,.18),
+      inset 0 0 62px rgba(57,215,255,.14);
+    animation:brolyPagePulse 3.8s ease-in-out infinite;
+  }
+  .broly-page-orb:before{
+    content:"";
+    position:absolute;
+    inset:17px;
+    border-radius:50%;
+    border:1px solid rgba(205,249,255,.20);
+    background:conic-gradient(from 90deg,transparent,rgba(57,215,255,.09),transparent 33%,rgba(128,93,255,.08),transparent 66%,rgba(57,215,255,.10),transparent);
+    box-shadow:inset 0 0 24px rgba(57,215,255,.08);
+    animation:brolyPageSpin 10s linear infinite;
+  }
+  .broly-page-orb:after{
+    content:"";
+    position:absolute;
+    inset:44px;
+    border-radius:50%;
+    background:radial-gradient(circle,rgba(245,254,255,.98) 0 7%,rgba(151,241,255,.93) 9% 25%,rgba(57,215,255,.44) 31%,rgba(11,124,255,.08) 58%,transparent 70%);
+    box-shadow:0 0 18px rgba(213,252,255,.58),0 0 36px rgba(57,215,255,.36);
+    animation:brolyPageNucleus 2.4s ease-in-out infinite;
+  }
+  .broly-page-core-label{
+    position:absolute;
+    z-index:9;
+    text-align:center;
+    pointer-events:none;
+    transform:translateY(2px);
+  }
+  .broly-page-core-name{
+    color:#fff;
+    font-size:18px;
+    line-height:1;
+    font-weight:950;
+    letter-spacing:4px;
+    text-shadow:
+      0 0 7px rgba(238,254,255,.94),
+      0 0 17px rgba(57,215,255,.82),
+      0 0 28px rgba(11,124,255,.42);
+  }
+  .broly-page-core-state{
+    margin-top:8px;
+    color:rgba(215,245,253,.72);
+    font-size:7px;
+    line-height:1;
+    font-weight:850;
+    letter-spacing:1.45px;
+    white-space:nowrap;
+  }
+
+  .broly-page-statebar{
+    position:relative;
+    z-index:15;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:10px;
+    margin-top:-3px;
+    color:rgba(226,247,252,.88);
+    font-size:10px;
+    font-weight:900;
+    letter-spacing:1.75px;
+  }
+  .broly-page-state-dot{
+    width:7px;
+    height:7px;
+    border-radius:50%;
+    background:#39D7FF;
+    box-shadow:
+      0 0 7px #39D7FF,
+      0 0 16px rgba(57,215,255,.70);
+    animation:brolyPageDot 2.3s ease-in-out infinite;
+  }
+
+  .broly-page-console-wrap{
+    position:relative;
+    z-index:20;
+    max-width:860px;
+    margin:24px auto 0;
+    padding:0 28px 34px;
+  }
+  .broly-page-console{
+    display:grid;
+    grid-template-columns:58px minmax(0,1fr);
+    gap:12px;
+    align-items:center;
+  }
+  .broly-page-mic{
+    width:58px;
+    height:58px;
+    box-sizing:border-box;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:50%;
+    border:1px solid rgba(57,215,255,.34);
+    background:
+      radial-gradient(circle at 50% 45%,rgba(57,215,255,.13),rgba(11,124,255,.06) 56%,rgba(3,10,20,.84) 100%);
+    box-shadow:
+      inset 0 0 18px rgba(57,215,255,.05),
+      0 0 17px rgba(57,215,255,.08);
+    color:rgba(208,247,255,.82);
+    font-size:22px;
+    filter:saturate(.95);
+  }
+  .broly-page-input-shell{
+    position:relative;
+    min-height:58px;
+    box-sizing:border-box;
+    display:flex;
+    align-items:center;
+    padding:0 18px;
+    border-radius:16px;
+    border:1px solid rgba(57,215,255,.20);
+    background:linear-gradient(180deg,rgba(11,23,38,.86),rgba(7,16,28,.90));
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,.015),
+      inset 0 0 19px rgba(57,215,255,.025);
+  }
+  .broly-page-input-shell:before{
+    content:"";
+    position:absolute;
+    left:18px;
+    right:18px;
+    bottom:8px;
+    height:1px;
+    background:linear-gradient(90deg,rgba(57,215,255,.30),rgba(128,93,255,.18),transparent);
+  }
+  .broly-page-input-placeholder{
+    color:rgba(184,213,224,.48);
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.65px;
+  }
+  .broly-page-send{
+    margin-left:auto;
+    color:rgba(57,215,255,.44);
+    font-size:14px;
+    font-weight:900;
+    letter-spacing:1px;
+  }
+  .broly-page-console-note{
+    margin-top:10px;
+    padding-left:70px;
+    color:rgba(131,177,195,.38);
+    font-size:7.2px;
+    font-weight:800;
+    letter-spacing:1.05px;
+    line-height:1.5;
+  }
+
+  @keyframes brolyPageSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  @keyframes brolyPageSpinReverse{from{transform:rotate(360deg)}to{transform:rotate(0deg)}}
+  @keyframes brolyPagePulse{
+    0%,100%{transform:scale(.985);filter:brightness(.92) saturate(.94)}
+    50%{transform:scale(1.025);filter:brightness(1.16) saturate(1.10)}
+  }
+  @keyframes brolyPageNucleus{
+    0%,100%{transform:scale(.88);opacity:.72}
+    50%{transform:scale(1.13);opacity:1}
+  }
+  @keyframes brolyPageDot{
+    0%,100%{opacity:.42}
+    50%{opacity:1}
+  }
+  @keyframes brolyPageArcA{
+    from{transform:rotate(18deg) scale(.995);opacity:.58}
+    to{transform:rotate(42deg) scale(1.012);opacity:.95}
+  }
+  @keyframes brolyPageArcB{
+    from{transform:rotate(-40deg);opacity:.48}
+    to{transform:rotate(-17deg);opacity:.82}
+  }
+  @keyframes brolyPageOrbitA{
+    from{transform:rotate(0deg) translateX(127px) rotate(0deg)}
+    to{transform:rotate(360deg) translateX(127px) rotate(-360deg)}
+  }
+  @keyframes brolyPageOrbitB{
+    from{transform:rotate(130deg) translateX(103px) rotate(-130deg)}
+    to{transform:rotate(490deg) translateX(103px) rotate(-490deg)}
+  }
+  @keyframes brolyPageOrbitC{
+    from{transform:rotate(245deg) translateX(80px) rotate(-245deg)}
+    to{transform:rotate(605deg) translateX(80px) rotate(-605deg)}
+  }
+
+  @media (max-width:760px){
+    .broly-page-shell{min-height:670px}
+    .broly-page-head{padding:22px 20px 10px}
+    .broly-page-title{font-size:20px}
+    .broly-page-core-stage{min-height:340px;padding-top:30px}
+    .broly-page-core-wrap{width:270px;height:270px}
+    .broly-page-orb{width:126px;height:126px}
+    .broly-page-console-wrap{padding:0 18px 28px}
+    .broly-page-console{grid-template-columns:52px minmax(0,1fr);gap:10px}
+    .broly-page-mic{width:52px;height:52px}
+    .broly-page-input-shell{min-height:52px}
+    .broly-page-console-note{padding-left:62px}
+    .broly-page-sat.a{animation:none}
+    .broly-page-sat.b{animation:none}
+    .broly-page-sat.c{animation:none}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    .broly-page-halo,.broly-page-ticks,.broly-page-arc,.broly-page-ring,
+    .broly-page-ring:before,.broly-page-ring-inner:before,.broly-page-sat,
+    .broly-page-orb,.broly-page-orb:before,.broly-page-orb:after,
+    .broly-page-state-dot{animation:none !important}
+  }
+</style>
+<div class="broly-page-shell">
+  <div class="broly-page-head">
+    <div class="broly-page-brand">
+      <div class="broly-page-eyebrow">BROLY COGNITIVE SYSTEM</div>
+      <div class="broly-page-title">BROLY // RENKEI</div>
+      <div class="broly-page-sub">AI OPERATOR INTERFACE · ANALYTICS ORCHESTRATION NODE</div>
+    </div>
+    <div class="broly-page-node">
+      <div class="broly-page-node-main">RENKEI NODE</div>
+      <div class="broly-page-node-sub">LOCAL UI SHELL // PRE-API</div>
+    </div>
+  </div>
+
+  <div class="broly-page-core-stage">
+    <div class="broly-page-core-wrap" aria-hidden="true">
+      <div class="broly-page-halo"></div>
+      <div class="broly-page-ticks"></div>
+      <div class="broly-page-arc a"></div>
+      <div class="broly-page-arc b"></div>
+      <div class="broly-page-arc c"></div>
+      <div class="broly-page-ring"></div>
+      <div class="broly-page-ring-inner"></div>
+      <div class="broly-page-sat a"></div>
+      <div class="broly-page-sat b"></div>
+      <div class="broly-page-sat c"></div>
+      <div class="broly-page-orb"></div>
+      <div class="broly-page-core-label">
+        <div class="broly-page-core-name">BROLY</div>
+        <div class="broly-page-core-state">AI CORE · RENKEI NODE</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="broly-page-statebar">
+    <span class="broly-page-state-dot"></span>
+    <span>STANDBY</span>
+  </div>
+
+  <div class="broly-page-console-wrap">
+    <div class="broly-page-console">
+      <div class="broly-page-mic" title="Voice interface — future connection">🎙</div>
+      <div class="broly-page-input-shell">
+        <span class="broly-page-input-placeholder">BROLYに指示する…</span>
+        <span class="broly-page-send">›</span>
+      </div>
+    </div>
+    <div class="broly-page-console-note">VOICE / CHAT INTERFACE · UI PROTOTYPE · API CONNECTION PENDING</div>
+
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
 DEFAULT_OWNER = "faker101730-droid"
 DEFAULT_REPO = "RENKEI"
 DEFAULT_BRANCH = "main"
@@ -698,6 +1267,21 @@ def build_cumulative_chart(chart_df: pd.DataFrame, years: list[str], role_years:
 # =========================================================
 # 画面本体
 # =========================================================
+with st.sidebar:
+    st.header("画面選択")
+    renkei_view = st.radio(
+        "画面",
+        ["BROLY", "予約業務実績"],
+        index=1,
+        key="renkei_view",
+    )
+
+# BROLYページはUIのみ。API・音声・Context Managerにはまだ未接続。
+# GitHubアクセス・Excel読込・集計処理に入る前に停止する。
+if renkei_view == "BROLY":
+    render_broly_page()
+    st.stop()
+
 st.markdown('<div class="renkei-title">RENKEI</div>', unsafe_allow_html=True)
 with st.sidebar:
     st.header("データ読込")
