@@ -6,7 +6,7 @@ RENKEI - 地域連携室 予約業務実績ダッシュボード
 更新元データ: 画面からアップロードする最新Excel
 必須列: 年度, 月, 月番号, 稼働日数, 予約件数
 仕様: 予約件数が空欄の未来月・未入力月は 0 件扱いせず、計算対象外にする。
-更新: Preview → 人間承認 → 固定Write RPC。アップロードだけでは正式値を変更しない。
+更新: Excel選択 → 明示的アップロード → Preview → 人間承認 → 固定Write RPC。ファイル選択だけでは正式値を変更しない。
 """
 
 from __future__ import annotations
@@ -1526,11 +1526,29 @@ st.markdown(
 )
 with st.sidebar:
     st.header("データ更新")
-    uploaded_file = st.file_uploader(
-        "最新データExcelをアップロード",
+    selected_update_file = st.file_uploader(
+        "最新データExcelを選択",
         type=["xlsx"],
-        help="アップロードだけでは正式値は変わりません。Preview確認と承認後にSupabaseへ更新します。",
+        help="ここではファイルを選択するだけです。下のアップロードボタンを押した後にPreviewを作成します。",
+        key="renkei_update_file_selector",
     )
+    upload_for_preview = st.button(
+        "アップロードしてPreview",
+        type="primary",
+        disabled=selected_update_file is None,
+        use_container_width=True,
+        key="renkei_upload_for_preview_button",
+    )
+    if selected_update_file is not None and not upload_for_preview:
+        st.caption("ファイル選択後、「アップロードしてPreview」を押してください。")
+
+if upload_for_preview and selected_update_file is not None:
+    selected_bytes = selected_update_file.getvalue()
+    st.session_state["renkei_pending_upload"] = {
+        "name": selected_update_file.name,
+        "bytes": selected_bytes,
+        "sha256": hashlib.sha256(selected_bytes).hexdigest(),
+    }
 
 try:
     df = load_from_supabase()
@@ -1545,9 +1563,11 @@ auto_swapped = False
 # 最新Excel → Preview → 人間承認 → 固定Write RPC
 # アップロードデータを分析値へ直接使用せず、正式保存成功後にRead RPCから再取得する。
 # ---------------------------------------------------------
-if uploaded_file is not None:
-    upload_bytes = uploaded_file.getvalue()
-    upload_sha256 = hashlib.sha256(upload_bytes).hexdigest()
+pending_upload = st.session_state.get("renkei_pending_upload")
+if pending_upload is not None:
+    upload_bytes = pending_upload["bytes"]
+    upload_sha256 = pending_upload["sha256"]
+    upload_file_name = pending_upload["name"]
     try:
         update_raw = load_from_upload(io.BytesIO(upload_bytes))
         update_df = standardize_renkei_data(update_raw)
@@ -1559,7 +1579,7 @@ if uploaded_file is not None:
         update_errors = [f"Excel読込・整形エラー: {e}"]
 
     with st.expander("最新データ更新 Preview", expanded=True):
-        st.caption(f"ファイル: {uploaded_file.name} / SHA-256: {upload_sha256}")
+        st.caption(f"ファイル: {upload_file_name} / SHA-256: {upload_sha256}")
         if update_auto_swapped:
             st.warning(
                 "アップロードExcelで「稼働日数」と「予約件数」が逆に入力されている可能性が高いため、"
@@ -1615,14 +1635,15 @@ if uploaded_file is not None:
                     disabled=not approved,
                     key=f"renkei_update_button_{upload_sha256[:16]}",
                 ):
-                    # ボタン押下時にも同一bytesのSHAを再確認する。
-                    review_sha256 = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+                    # Preview時に固定したbytesを正式更新直前にも再ハッシュする。
+                    review_sha256 = hashlib.sha256(upload_bytes).hexdigest()
                     if review_sha256 != upload_sha256:
-                        st.error("Preview後にアップロード内容が変化したため更新を中止しました。再Previewしてください。")
+                        st.error("Preview保持データのSHA-256が変化したため更新を中止しました。再アップロードしてください。")
                     else:
                         try:
                             result = save_renkei_update(update_df)
                             load_from_supabase.clear()
+                            st.session_state.pop("renkei_pending_upload", None)
                             st.success(f"Supabase更新成功: {result}")
                             st.rerun()
                         except Exception as e:
@@ -1739,4 +1760,4 @@ with st.expander("集計データを確認", expanded=False):
         mime="text/csv",
     )
 
-st.caption("RENKEI v6：正式データはSupabase Read RPC。最新ExcelはPreview・人間承認後にWrite RPCで更新。未入力月の予約件数NULLは0件扱いしない。月推移・1日平均・累計は、対象年度を棒、比較年度を折れ線で表示。")
+st.caption("RENKEI v7：正式データはSupabase Read RPC。最新Excelは選択→明示的アップロード→Preview→人間承認後にWrite RPCで更新。未入力月の予約件数NULLは0件扱いしない。月推移・1日平均・累計は、対象年度を棒、比較年度を折れ線で表示。")
