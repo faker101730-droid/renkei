@@ -616,40 +616,98 @@ MONTH_ORDER = {m: i + 1 for i, m in enumerate(FISCAL_MONTHS)}
 
 
 # =========================================================
-# CSS
+# BROLY GLOBAL DESIGN SYSTEM / RENKEI
+#   - 表示層のみ。GitHub読込・Excel整形・集計計算ロジックは変更しない。
 # =========================================================
 st.markdown(
-    """
-    <style>
-    .main .block-container { padding-top: 1.3rem; padding-bottom: 2rem; }
-    .renkei-title {
-        font-size: 2.0rem;
-        font-weight: 800;
-        letter-spacing: 0.02em;
-        margin-bottom: 1.0rem;
-    }
-    .renkei-subtitle {
-        color: rgba(120,120,120,0.95);
-        font-size: 0.98rem;
-        margin-bottom: 1.1rem;
-    }
-    .note-box {
-        border: 1px solid rgba(120,120,120,0.25);
-        border-radius: 14px;
-        padding: 0.9rem 1.0rem;
-        background: rgba(120,120,120,0.06);
-        margin-bottom: 1rem;
-        line-height: 1.65;
-    }
-    div[data-testid="stMetric"] {
-        border: 1px solid rgba(120,120,120,0.23);
-        border-radius: 16px;
-        padding: 0.85rem 0.95rem;
-        background: rgba(120,120,120,0.055);
-    }
-    div[data-testid="stMetric"] label { font-weight: 700; }
-    .small-caption { color: rgba(120,120,120,0.95); font-size: 0.88rem; }
-    </style>
+    r"""
+<style>
+:root{
+  --broly-bg:#050A12;
+  --broly-bg-mid:#07101C;
+  --broly-bg-end:#040810;
+  --broly-panel:#06101C;
+  --broly-panel-2:#091B2C;
+  --broly-text:#E6EAF2;
+  --broly-muted:rgba(190,214,229,.68);
+  --broly-cyan:#39D7FF;
+  --broly-blue:#0B7CFF;
+  --broly-violet:#805DFF;
+  --broly-border:rgba(57,215,255,.20);
+  color-scheme:dark;
+}
+html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stAppViewContainer"]>.main,section.main{
+  background-color:var(--broly-bg)!important;
+  color:var(--broly-text)!important;
+}
+.stApp,[data-testid="stAppViewContainer"],[data-testid="stAppViewContainer"]>.main{
+  background:
+    radial-gradient(980px 650px at 50% 18%,rgba(11,124,255,.17),transparent 68%),
+    radial-gradient(720px 520px at 95% 4%,rgba(128,93,255,.10),transparent 64%),
+    radial-gradient(620px 500px at 0% 38%,rgba(57,215,255,.07),transparent 64%),
+    linear-gradient(180deg,var(--broly-bg) 0%,var(--broly-bg-mid) 52%,var(--broly-bg-end) 100%)!important;
+}
+[data-testid="stAppViewContainer"]>.main>div,section.main>div.block-container,[data-testid="stVerticalBlock"],[data-testid="stHorizontalBlock"]{background:transparent!important;}
+[data-testid="stAppViewContainer"]::after{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.055;
+  background-image:linear-gradient(rgba(57,215,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(57,215,255,.035) 1px,transparent 1px);
+  background-size:34px 34px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.85),transparent 94%);
+}
+section.main>div.block-container{position:relative;z-index:1;max-width:1500px;padding-top:.72rem;padding-bottom:2rem;}
+[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"]{background:transparent!important;border:none!important;box-shadow:none!important;}
+#MainMenu{visibility:hidden;} footer{visibility:hidden;}
+h1,h2,h3,h4,h5,h6,[data-testid="stHeadingWithActionElements"]{color:#FFFFFF!important;}
+[data-testid="stCaptionContainer"],[data-testid="stCaptionContainer"] p,small{color:var(--broly-muted)!important;}
+
+/* Sidebar */
+[data-testid="stSidebar"]{background:linear-gradient(180deg,rgba(5,12,22,.98),rgba(4,10,18,.98))!important;border-right:1px solid rgba(57,215,255,.12)!important;}
+[data-testid="stSidebar"] *{color:var(--broly-text);} 
+[data-testid="stSidebar"] h1,[data-testid="stSidebar"] h2,[data-testid="stSidebar"] h3{color:#FFFFFF!important;}
+
+/* Controls */
+[data-baseweb="input"]>div,[data-baseweb="base-input"],[data-baseweb="select"]>div,[data-baseweb="textarea"]>div,textarea,input{
+  background-color:rgba(7,17,31,.92)!important;color:#FFFFFF!important;border-color:rgba(57,215,255,.18)!important;
+}
+[data-baseweb="select"] svg,[data-baseweb="input"] svg{color:rgba(57,215,255,.70)!important;}
+[data-baseweb="popover"],[data-baseweb="menu"]{background:rgba(7,17,31,.99)!important;color:var(--broly-text)!important;}
+[data-baseweb="menu"] li{background:transparent!important;color:var(--broly-text)!important;}
+[data-baseweb="menu"] li:hover,[data-baseweb="menu"] li[aria-selected="true"]{background:rgba(57,215,255,.09)!important;color:#FFFFFF!important;}
+[data-testid="stFileUploader"] section{background:rgba(7,17,31,.72)!important;border-color:rgba(57,215,255,.18)!important;}
+
+/* Buttons */
+.stButton>button,.stDownloadButton>button,[data-testid="stFormSubmitButton"]>button{
+  color:#FFFFFF!important;background:linear-gradient(180deg,rgba(11,124,255,.22),rgba(8,20,35,.88))!important;
+  border:1px solid rgba(57,215,255,.30)!important;border-radius:10px!important;box-shadow:0 8px 20px rgba(0,0,0,.16)!important;transition:all .14s ease!important;
+}
+.stButton>button:hover,.stDownloadButton>button:hover,[data-testid="stFormSubmitButton"]>button:hover{
+  border-color:rgba(57,215,255,.58)!important;background:linear-gradient(180deg,rgba(11,124,255,.34),rgba(8,24,42,.94))!important;
+  box-shadow:0 0 18px rgba(57,215,255,.12),0 10px 22px rgba(0,0,0,.20)!important;transform:translateY(-1px);
+}
+
+/* Metrics / containers */
+div[data-testid="stMetric"],div[data-testid="stExpander"]{
+  border:1px solid rgba(57,215,255,.16)!important;border-radius:13px!important;background:linear-gradient(180deg,rgba(6,16,28,.88),rgba(5,13,24,.72))!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.18)!important;
+}
+div[data-testid="stMetric"]{padding:.72rem .82rem!important;}
+[data-testid="stMetricLabel"]{color:var(--broly-muted)!important;}
+[data-testid="stMetricValue"]{color:#FFFFFF!important;}
+div[data-testid="stExpander"] details,div[data-testid="stExpander"] summary{background:transparent!important;color:var(--broly-text)!important;}
+div[data-testid="stExpander"] details summary p{color:#FFFFFF!important;font-weight:800!important;}
+[data-testid="stAlert"]{border:1px solid rgba(57,215,255,.16)!important;border-radius:11px!important;background:rgba(6,16,28,.78)!important;color:var(--broly-text)!important;}
+
+/* Dataframe wrapper only. Internal grid/canvas is intentionally untouched. */
+[data-testid="stDataFrame"],[data-testid="stTable"]{border:1px solid rgba(57,215,255,.14)!important;border-radius:11px!important;overflow:hidden!important;background:#050A12!important;}
+hr{border-color:rgba(57,215,255,.12)!important;}
+
+.renkei-hero{position:relative;overflow:hidden;margin:.05rem 0 .95rem;padding:1.05rem 1.15rem 1rem;border:1px solid rgba(57,215,255,.20);border-radius:15px;background:linear-gradient(135deg,rgba(7,18,32,.92),rgba(5,13,24,.78));box-shadow:0 16px 36px rgba(0,0,0,.20),inset 0 1px 0 rgba(255,255,255,.025);}
+.renkei-hero::before{content:"";position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,rgba(57,215,255,.86),rgba(128,93,255,.55),transparent);}
+.renkei-kicker{font-size:.68rem;letter-spacing:.20em;font-weight:900;color:rgba(57,215,255,.67);margin-bottom:.28rem;}
+.renkei-title{font-size:1.72rem;font-weight:950;letter-spacing:.045em;color:#FFFFFF;line-height:1.15;text-shadow:0 0 18px rgba(57,215,255,.10);}
+.renkei-subtitle{margin-top:.35rem;color:rgba(200,220,233,.70);font-size:.88rem;}
+.renkei-node{margin-top:.55rem;font-size:.70rem;letter-spacing:.14em;color:rgba(57,215,255,.56);font-weight:850;}
+.small-caption{color:var(--broly-muted)!important;font-size:.88rem;}
+</style>
     """,
     unsafe_allow_html=True,
 )
@@ -908,7 +966,6 @@ def standardize_renkei_data(raw_df: pd.DataFrame) -> pd.DataFrame:
         rename_map[month_col] = "月"
 
     df = df.rename(columns=rename_map)
-    required_cols = ["年度", "月番号", "稼働日数", "予約件数"]
     if "月" not in df.columns:
         df["月"] = pd.NA
 
@@ -994,9 +1051,12 @@ def calc_metrics(df: pd.DataFrame) -> dict[str, Optional[float]]:
 # =========================================================
 def apply_common_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
     fig.update_layout(
-        title={"text": title, "x": 0.02, "xanchor": "left", "y": 0.98, "yanchor": "top"},
+        title={"text": title, "x": 0.02, "xanchor": "left", "y": 0.98, "yanchor": "top", "font": {"size": 18, "color": "#FFFFFF"}},
         height=420,
-        margin=dict(l=48, r=145, t=70, b=52),
+        margin=dict(l=72, r=155, t=82, b=68),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#E6EAF2", size=13),
         legend=dict(
             orientation="v",
             yanchor="top",
@@ -1004,26 +1064,33 @@ def apply_common_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
             xanchor="left",
             x=1.02,
             traceorder="normal",
-            font=dict(size=13),
-            bgcolor="rgba(120,120,120,0.08)",
-            bordercolor="rgba(120,120,120,0.25)",
+            font=dict(size=13, color="#E6EAF2"),
+            bgcolor="rgba(5,10,18,0.72)",
+            bordercolor="rgba(57,215,255,0.20)",
             borderwidth=1,
         ),
         hovermode="x unified",
+        hoverlabel=dict(bgcolor="#07111F", font_color="#FFFFFF", bordercolor="rgba(57,215,255,0.35)"),
     )
     fig.update_xaxes(
         title_text="月",
         categoryorder="array",
         categoryarray=[MONTH_LABELS[m] for m in FISCAL_MONTHS],
-        tickfont=dict(size=14),
-        title_font=dict(size=15),
+        tickfont=dict(size=14, color="#D8E7F0"),
+        title_font=dict(size=15, color="#FFFFFF"),
+        linecolor="rgba(190,214,229,0.22)",
+        gridcolor="rgba(190,214,229,0.08)",
+        zerolinecolor="rgba(190,214,229,0.12)",
         automargin=True,
     )
     fig.update_yaxes(
         title_text=y_title,
         rangemode="tozero",
-        tickfont=dict(size=14),
-        title_font=dict(size=15),
+        tickfont=dict(size=14, color="#D8E7F0"),
+        title_font=dict(size=15, color="#FFFFFF"),
+        linecolor="rgba(190,214,229,0.22)",
+        gridcolor="rgba(190,214,229,0.08)",
+        zerolinecolor="rgba(190,214,229,0.12)",
         automargin=True,
     )
     return fig
@@ -1215,21 +1282,30 @@ def build_monthly_average_chart(chart_df: pd.DataFrame, years: list[str], role_y
         )
     )
     fig.update_layout(
-        title={"text": "月平均｜期間内の実績月平均", "x": 0.02, "xanchor": "left"},
+        title={"text": "月平均｜期間内の実績月平均", "x": 0.02, "xanchor": "left", "font": {"size": 18, "color": "#FFFFFF"}},
         height=420,
-        margin=dict(l=48, r=28, t=70, b=52),
+        margin=dict(l=72, r=36, t=82, b=68),
         showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#E6EAF2", size=13),
+        hoverlabel=dict(bgcolor="#07111F", font_color="#FFFFFF", bordercolor="rgba(57,215,255,0.35)"),
     )
     fig.update_xaxes(
-        tickfont=dict(size=14),
-        title_font=dict(size=15),
+        tickfont=dict(size=14, color="#D8E7F0"),
+        title_font=dict(size=15, color="#FFFFFF"),
+        linecolor="rgba(190,214,229,0.22)",
+        gridcolor="rgba(190,214,229,0.08)",
         automargin=True,
     )
     fig.update_yaxes(
         title_text="月平均予約件数",
         rangemode="tozero",
-        tickfont=dict(size=14),
-        title_font=dict(size=15),
+        tickfont=dict(size=14, color="#D8E7F0"),
+        title_font=dict(size=15, color="#FFFFFF"),
+        linecolor="rgba(190,214,229,0.22)",
+        gridcolor="rgba(190,214,229,0.08)",
+        zerolinecolor="rgba(190,214,229,0.12)",
         automargin=True,
     )
     return fig
@@ -1282,7 +1358,17 @@ if renkei_view == "BROLY":
     render_broly_page()
     st.stop()
 
-st.markdown('<div class="renkei-title">RENKEI</div>', unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="renkei-hero">
+      <div class="renkei-kicker">BROLY COGNITIVE SYSTEM // REGIONAL COORDINATION</div>
+      <div class="renkei-title">RENKEI</div>
+      <div class="renkei-subtitle">地域連携室 予約業務実績ダッシュボード</div>
+      <div class="renkei-node">ANALYTICS NODE // GITHUB SOURCE</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 with st.sidebar:
     st.header("データ読込")
     uploaded_file = st.file_uploader("Excelをアップロード（任意）", type=["xlsx"])
@@ -1296,14 +1382,10 @@ with st.sidebar:
 try:
     if uploaded_file is not None:
         raw = load_from_upload(uploaded_file)
-        data_source = "アップロードExcel"
     else:
         raw = load_from_github(owner, repo, branch, file_path)
-        data_source = f"GitHub: {owner}/{repo}/{file_path}"
     df = standardize_renkei_data(raw)
     auto_swapped = bool(df.attrs.get("auto_swapped_working_days_reservations", False))
-    source_sheet_name = df.attrs.get("source_sheet_name", "不明")
-    source_header_row = df.attrs.get("source_header_row", "不明")
 except Exception as e:
     st.error("データを読み込めませんでした。Excel様式またはGitHub保存先を確認してください。")
     st.exception(e)
