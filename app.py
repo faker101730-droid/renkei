@@ -2,15 +2,18 @@
 """
 RENKEI - 地域連携室 予約業務実績ダッシュボード
 
-元データ: GitHub RENKEI/latest.xlsx または画面アップロードExcel
+正式データ: Supabase public.renkei_monthly_metrics（Read RPC経由）
+更新元データ: 画面からアップロードする最新Excel
 必須列: 年度, 月, 月番号, 稼働日数, 予約件数
 仕様: 予約件数が空欄の未来月・未入力月は 0 件扱いせず、計算対象外にする。
+更新: Preview → 人間承認 → 固定Write RPC。アップロードだけでは正式値を変更しない。
 """
 
 from __future__ import annotations
 
 import io
 import re
+import hashlib
 from typing import Iterable, Optional
 
 import pandas as pd
@@ -596,10 +599,8 @@ def render_broly_page() -> None:
         unsafe_allow_html=True,
     )
 
-DEFAULT_OWNER = "faker101730-droid"
-DEFAULT_REPO = "RENKEI"
-DEFAULT_BRANCH = "main"
-DEFAULT_FILE_PATH = "latest.xlsx"
+RENKEI_READ_RPC = "renkei_get_monthly_metrics"
+RENKEI_WRITE_RPC = "renkei_upsert_monthly_metrics"
 
 # グラフ色（対象年度と比較年度を明確に区別）
 COLOR_TARGET = "#F97316"      # 対象年度：オレンジ
@@ -617,7 +618,7 @@ MONTH_ORDER = {m: i + 1 for i, m in enumerate(FISCAL_MONTHS)}
 
 # =========================================================
 # BROLY GLOBAL DESIGN SYSTEM / RENKEI
-#   - 表示層のみ。GitHub読込・Excel整形・集計計算ロジックは変更しない。
+#   - 表示層とデータ入出力経路のみ更新。集計計算ロジックは変更しない。
 # =========================================================
 st.markdown(
     r"""
@@ -905,14 +906,81 @@ def sort_years_ascending(years: list[str]) -> list[str]:
 
 
 # =========================================================
-# データ読込・整形
+# Supabase / データ読込・更新
 # =========================================================
-@st.cache_data(ttl=600, show_spinner=False)
-def load_from_github(owner: str, repo: str, branch: str, file_path: str) -> pd.DataFrame:
-    raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_path}"
-    response = requests.get(raw_url, timeout=20)
-    response.raise_for_status()
-    return read_excel_smart(io.BytesIO(response.content))
+def _supabase_config() -> tuple[str, str]:
+    url = safe_secret("SUPABASE_URL", "").strip().rstrip("/")
+    key = safe_secret(
+        "SUPABASE_SECRET_KEY",
+        safe_secret("SUPABASE_SERVICE_ROLE_KEY", ""),
+    ).strip()
+    return url, key
+
+
+def _supabase_headers(secret_key: str) -> dict[str, str]:
+    headers = {
+        "apikey": secret_key,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "streamlit-renkei",
+    }
+    # Legacy JWT service_role key only。新しい sb_secret_* は apikey のみで使用する。
+    if secret_key.startswith("eyJ"):
+        headers["Authorization"] = f"Bearer {secret_key}"
+    return headers
+
+
+def _supabase_rpc(rpc_name: str, payload: Optional[dict] = None, timeout: int = 30):
+    url, key = _supabase_config()
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL / SUPABASE_SECRET_KEY が未設定です。")
+    endpoint = f"{url}/rest/v1/rpc/{rpc_name}"
+    response = requests.post(
+        endpoint,
+        headers=_supabase_headers(key),
+        json=payload or {},
+        timeout=timeout,
+    )
+    if not response.ok:
+        detail = response.text[:1200]
+        raise RuntimeError(f"Supabase RPC {rpc_name} エラー: HTTP {response.status_code} / {detail}")
+    if not response.content:
+        return None
+    try:
+        return response.json()
+    except Exception:
+        return response.text
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_from_supabase() -> pd.DataFrame:
+    rows = _supabase_rpc(RENKEI_READ_RPC, {})
+    if not isinstance(rows, list):
+        raise RuntimeError(f"Supabase RPC {RENKEI_READ_RPC} の返却形式が不正です。")
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["年度", "月", "月番号", "稼働日数", "予約件数", "年度内順"])
+    required = {"fiscal_year", "month_no", "working_days", "reservation_count"}
+    missing = sorted(required.difference(df.columns))
+    if missing:
+        raise RuntimeError(f"Supabase RPC返却列が不足しています: {missing}")
+    df = df.rename(columns={
+        "fiscal_year": "年度",
+        "month_no": "月番号",
+        "working_days": "稼働日数",
+        "reservation_count": "予約件数",
+    })
+    df["年度"] = df["年度"].astype(str).str.strip().str.upper()
+    df["月番号"] = pd.to_numeric(df["月番号"], errors="coerce")
+    df["稼働日数"] = pd.to_numeric(df["稼働日数"], errors="coerce")
+    df["予約件数"] = pd.to_numeric(df["予約件数"], errors="coerce")
+    df = df[df["年度"].notna() & df["月番号"].isin(FISCAL_MONTHS)].copy()
+    df["月番号"] = df["月番号"].astype(int)
+    df["月"] = df["月番号"].map(MONTH_LABELS)
+    df["年度内順"] = df["月番号"].map(MONTH_ORDER)
+    return df[["年度", "月", "月番号", "稼働日数", "予約件数", "年度内順"]].sort_values(
+        ["年度", "年度内順"], key=lambda s: s.map(fiscal_year_sort_key) if s.name == "年度" else s
+    ).reset_index(drop=True)
 
 
 def load_from_upload(uploaded_file) -> pd.DataFrame:
@@ -1010,6 +1078,93 @@ def standardize_renkei_data(raw_df: pd.DataFrame) -> pd.DataFrame:
     df.attrs["source_sheet_name"] = source_sheet_name
     df.attrs["source_header_row"] = source_header_row
     return df
+
+
+def _is_integer_like(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce")
+    return series.isna() | (numeric.notna() & numeric.mod(1).eq(0))
+
+
+def validate_renkei_update_data(df: pd.DataFrame) -> list[str]:
+    """正式更新前の構造・値検証。最新Excelは、含めた年度ごとに4〜3月の12行を必須とする。"""
+    errors: list[str] = []
+    if df is None or df.empty:
+        return ["更新対象データが空です。"]
+
+    if not df["年度"].astype(str).str.fullmatch(r"R\d+").all():
+        errors.append("年度は R6 / R7 のような令和年度表記にしてください。")
+    if not df["月番号"].isin(FISCAL_MONTHS).all():
+        errors.append("月番号は1〜12の範囲で指定してください。")
+    if df.duplicated(["年度", "月番号"]).any():
+        errors.append("同じ年度・月が重複しています。")
+
+    for col in ["稼働日数", "予約件数"]:
+        numeric = pd.to_numeric(df[col], errors="coerce")
+        if (~_is_integer_like(df[col])).any():
+            errors.append(f"{col}は整数または空欄で入力してください。")
+        if (numeric.dropna() < 0).any():
+            errors.append(f"{col}に負の値は入力できません。")
+
+    expected = set(FISCAL_MONTHS)
+    for year, group in df.groupby("年度", dropna=False):
+        months = set(pd.to_numeric(group["月番号"], errors="coerce").dropna().astype(int).tolist())
+        if months != expected:
+            missing = [m for m in FISCAL_MONTHS if m not in months]
+            extra = sorted(months.difference(expected))
+            detail = []
+            if missing:
+                detail.append("不足=" + ",".join(f"{m}月" for m in missing))
+            if extra:
+                detail.append("範囲外=" + ",".join(map(str, extra)))
+            errors.append(f"{year} は4〜3月の12行が必要です（{' / '.join(detail)}）。")
+    return errors
+
+
+def build_renkei_update_diff(current_df: pd.DataFrame, candidate_df: pd.DataFrame) -> pd.DataFrame:
+    """アップロード候補と現在の正式値を年度+月で比較する。欠損同士は一致扱い。"""
+    current = current_df[["年度", "月番号", "稼働日数", "予約件数"]].rename(columns={
+        "稼働日数": "現在_稼働日数",
+        "予約件数": "現在_予約件数",
+    })
+    candidate = candidate_df[["年度", "月", "月番号", "稼働日数", "予約件数", "年度内順"]].rename(columns={
+        "稼働日数": "更新後_稼働日数",
+        "予約件数": "更新後_予約件数",
+    })
+    diff = candidate.merge(current, on=["年度", "月番号"], how="left", indicator=True)
+
+    def same_values(left: pd.Series, right: pd.Series) -> pd.Series:
+        return (left.eq(right)) | (left.isna() & right.isna())
+
+    same_working = same_values(diff["更新後_稼働日数"], diff["現在_稼働日数"])
+    same_reservation = same_values(diff["更新後_予約件数"], diff["現在_予約件数"])
+    diff["判定"] = "変更"
+    diff.loc[diff["_merge"].eq("left_only"), "判定"] = "新規"
+    diff.loc[diff["_merge"].eq("both") & same_working & same_reservation, "判定"] = "変更なし"
+    diff = diff.drop(columns=["_merge"])
+    return diff.sort_values(
+        ["年度", "年度内順"],
+        key=lambda s: s.map(fiscal_year_sort_key) if s.name == "年度" else s,
+    ).reset_index(drop=True)
+
+
+def renkei_update_records(candidate_df: pd.DataFrame) -> list[dict]:
+    records: list[dict] = []
+    for row in candidate_df.sort_values(["年度", "年度内順"]).itertuples(index=False):
+        working_days = getattr(row, "稼働日数")
+        reservation_count = getattr(row, "予約件数")
+        records.append({
+            "fiscal_year": str(getattr(row, "年度")),
+            "month_no": int(getattr(row, "月番号")),
+            "working_days": None if pd.isna(working_days) else int(working_days),
+            "reservation_count": None if pd.isna(reservation_count) else int(reservation_count),
+        })
+    return records
+
+
+def save_renkei_update(candidate_df: pd.DataFrame):
+    records = renkei_update_records(candidate_df)
+    return _supabase_rpc(RENKEI_WRITE_RPC, {"p_rows": records}, timeout=60)
+
 
 def filter_period(df: pd.DataFrame, years: list[str], months: list[int]) -> pd.DataFrame:
     return df[df["年度"].isin(years) & df["月番号"].isin(months)].copy()
@@ -1353,7 +1508,7 @@ with st.sidebar:
     )
 
 # BROLYページはUIのみ。API・音声・Context Managerにはまだ未接続。
-# GitHubアクセス・Excel読込・集計処理に入る前に停止する。
+# Supabaseアクセス・集計処理に入る前に停止する。
 if renkei_view == "BROLY":
     render_broly_page()
     st.stop()
@@ -1364,32 +1519,115 @@ st.markdown(
       <div class="renkei-kicker">BROLY COGNITIVE SYSTEM // REGIONAL COORDINATION</div>
       <div class="renkei-title">RENKEI</div>
       <div class="renkei-subtitle">地域連携室 予約業務実績ダッシュボード</div>
-      <div class="renkei-node">ANALYTICS NODE // GITHUB SOURCE</div>
+      <div class="renkei-node">ANALYTICS NODE // SUPABASE RPC</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 with st.sidebar:
-    st.header("データ読込")
-    uploaded_file = st.file_uploader("Excelをアップロード（任意）", type=["xlsx"])
-
-    owner = safe_secret("GITHUB_OWNER", DEFAULT_OWNER)
-    repo = safe_secret("GITHUB_REPO", DEFAULT_REPO)
-    branch = safe_secret("GITHUB_BRANCH", DEFAULT_BRANCH)
-    file_path = safe_secret("GITHUB_FILE_PATH", DEFAULT_FILE_PATH)
-
+    st.header("データ更新")
+    uploaded_file = st.file_uploader(
+        "最新データExcelをアップロード",
+        type=["xlsx"],
+        help="アップロードだけでは正式値は変わりません。Preview確認と承認後にSupabaseへ更新します。",
+    )
 
 try:
-    if uploaded_file is not None:
-        raw = load_from_upload(uploaded_file)
-    else:
-        raw = load_from_github(owner, repo, branch, file_path)
-    df = standardize_renkei_data(raw)
-    auto_swapped = bool(df.attrs.get("auto_swapped_working_days_reservations", False))
+    df = load_from_supabase()
 except Exception as e:
-    st.error("データを読み込めませんでした。Excel様式またはGitHub保存先を確認してください。")
+    st.error("SupabaseのRENKEI正式データを読み込めませんでした。Secrets・RPC・権限を確認してください。")
     st.exception(e)
     st.stop()
+
+auto_swapped = False
+
+# ---------------------------------------------------------
+# 最新Excel → Preview → 人間承認 → 固定Write RPC
+# アップロードデータを分析値へ直接使用せず、正式保存成功後にRead RPCから再取得する。
+# ---------------------------------------------------------
+if uploaded_file is not None:
+    upload_bytes = uploaded_file.getvalue()
+    upload_sha256 = hashlib.sha256(upload_bytes).hexdigest()
+    try:
+        update_raw = load_from_upload(io.BytesIO(upload_bytes))
+        update_df = standardize_renkei_data(update_raw)
+        update_auto_swapped = bool(update_df.attrs.get("auto_swapped_working_days_reservations", False))
+        update_errors = validate_renkei_update_data(update_df)
+    except Exception as e:
+        update_df = pd.DataFrame()
+        update_auto_swapped = False
+        update_errors = [f"Excel読込・整形エラー: {e}"]
+
+    with st.expander("最新データ更新 Preview", expanded=True):
+        st.caption(f"ファイル: {uploaded_file.name} / SHA-256: {upload_sha256}")
+        if update_auto_swapped:
+            st.warning(
+                "アップロードExcelで「稼働日数」と「予約件数」が逆に入力されている可能性が高いため、"
+                "従来仕様どおりアプリ側で自動補正しました。正式更新前に内容を確認してください。"
+            )
+        if update_errors:
+            for message in update_errors:
+                st.error(message)
+        else:
+            diff_df = build_renkei_update_diff(df, update_df)
+            changed_df = diff_df[diff_df["判定"].ne("変更なし")].copy()
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric("アップロード行", f"{len(update_df):,}行")
+            s2.metric("変更", f"{int(diff_df['判定'].eq('変更').sum()):,}行")
+            s3.metric("新規", f"{int(diff_df['判定'].eq('新規').sum()):,}行")
+            s4.metric("変更なし", f"{int(diff_df['判定'].eq('変更なし').sum()):,}行")
+
+            year_preview = (
+                update_df.groupby("年度", as_index=False)
+                .agg(
+                    行数=("月番号", "size"),
+                    実績月数=("予約件数", "count"),
+                    稼働日数合計=("稼働日数", lambda s: s.sum(min_count=1)),
+                    予約件数合計=("予約件数", lambda s: s.sum(min_count=1)),
+                )
+            )
+            st.markdown("**更新後の年度別サマリ**")
+            st.dataframe(year_preview, use_container_width=True, hide_index=True)
+
+            st.markdown("**現在値との差分**")
+            if changed_df.empty:
+                st.info("現在のSupabase正式値と同一です。更新は不要です。")
+            else:
+                st.dataframe(
+                    changed_df[[
+                        "年度", "月", "判定",
+                        "現在_稼働日数", "更新後_稼働日数",
+                        "現在_予約件数", "更新後_予約件数",
+                    ]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                approval_key = f"renkei_update_approval_{upload_sha256[:16]}"
+                approved = st.checkbox(
+                    "Preview内容と差分を確認し、このExcelの値でSupabaseを更新する",
+                    value=False,
+                    key=approval_key,
+                )
+                if st.button(
+                    "Supabaseへ正式更新",
+                    type="primary",
+                    disabled=not approved,
+                    key=f"renkei_update_button_{upload_sha256[:16]}",
+                ):
+                    # ボタン押下時にも同一bytesのSHAを再確認する。
+                    review_sha256 = hashlib.sha256(uploaded_file.getvalue()).hexdigest()
+                    if review_sha256 != upload_sha256:
+                        st.error("Preview後にアップロード内容が変化したため更新を中止しました。再Previewしてください。")
+                    else:
+                        try:
+                            result = save_renkei_update(update_df)
+                            load_from_supabase.clear()
+                            st.success(f"Supabase更新成功: {result}")
+                            st.rerun()
+                        except Exception as e:
+                            st.error("Supabase更新に失敗しました。DBの正式値は更新結果を確認するまで確定扱いにしないでください。")
+                            st.exception(e)
 
 all_years = sorted(df["年度"].dropna().unique().tolist(), key=fiscal_year_sort_key)
 years_with_actual = sorted(df[df["予約件数"].notna()]["年度"].dropna().unique().tolist(), key=fiscal_year_sort_key)
@@ -1433,13 +1671,6 @@ selected_months = get_month_range(start_month, end_month)
 selected_years = [target_year, comparison_year]
 display_years = sort_years_ascending(selected_years)
 period_df = filter_period(df, selected_years, selected_months)
-
-if auto_swapped:
-    st.warning(
-        "元データで「稼働日数」と「予約件数」が逆に入力されている可能性が高いため、"
-        "アプリ側で自動補正して集計しています。Excelは「稼働日数＝20日前後」「予約件数＝数百件〜」の並びに直すのがおすすめです。"
-    )
-
 
 target_df = period_df[period_df["年度"] == target_year]
 comp_df = period_df[period_df["年度"] == comparison_year]
@@ -1508,4 +1739,4 @@ with st.expander("集計データを確認", expanded=False):
         mime="text/csv",
     )
 
-st.caption("RENKEI v5：元データは月次集計済みExcel。月推移・1日平均・累計は、対象年度を棒、比較年度を折れ線で表示。棒色は前年度超過＝青、前年度未満＝赤。")
+st.caption("RENKEI v6：正式データはSupabase Read RPC。最新ExcelはPreview・人間承認後にWrite RPCで更新。未入力月の予約件数NULLは0件扱いしない。月推移・1日平均・累計は、対象年度を棒、比較年度を折れ線で表示。")
